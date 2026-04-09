@@ -1,0 +1,173 @@
+import java.util.*;
+class Asset {
+    String ticker;
+    double returnRate;
+    double volatility;
+
+    Asset(String ticker, double returnRate, double volatility) {
+        this.ticker = ticker;
+        this.returnRate = returnRate;
+        this.volatility = volatility;
+    }
+
+    @Override
+    public String toString() {
+        return ticker + "(ret=" + returnRate + "%, vol=" + volatility + "%)";
+    }
+}
+
+public class PortfolioReturnSorting {
+
+    static final int INSERTION_THRESHOLD = 10; // hybrid cutoff
+
+    // ── Merge Sort (ASC returnRate, stable) ──────────────────────────────────
+    static void mergeSort(Asset[] arr, int left, int right) {
+        if (left >= right) return;
+        int mid = (left + right) / 2;
+        mergeSort(arr, left, mid);
+        mergeSort(arr, mid + 1, right);
+        merge(arr, left, mid, right);
+    }
+
+    static void merge(Asset[] arr, int left, int mid, int right) {
+        Asset[] temp = new Asset[right - left + 1];
+        int i = left, j = mid + 1, k = 0;
+
+        while (i <= mid && j <= right) {
+            // <= preserves stability on tie
+            if (arr[i].returnRate <= arr[j].returnRate)
+                temp[k++] = arr[i++];
+            else
+                temp[k++] = arr[j++];
+        }
+        while (i <= mid)   temp[k++] = arr[i++];
+        while (j <= right) temp[k++] = arr[j++];
+
+        System.arraycopy(temp, 0, arr, left, temp.length);
+    }
+
+    // ── Quick Sort hybrid (DESC returnRate + ASC volatility) ─────────────────
+    static void quickSort(Asset[] arr, int low, int high, String pivotStrategy) {
+        if (low >= high) return;
+
+        // Hybrid: use Insertion Sort for small partitions
+        if (high - low + 1 <= INSERTION_THRESHOLD) {
+            insertionSortRange(arr, low, high);
+            return;
+        }
+
+        int pivotIdx = (pivotStrategy.equals("random"))
+                ? randomPivot(low, high)
+                : medianOfThreePivot(arr, low, high);
+
+        int p = partition(arr, low, high, pivotIdx);
+        quickSort(arr, low, p - 1, pivotStrategy);
+        quickSort(arr, p + 1, high, pivotStrategy);
+    }
+
+    // Lomuto partition — DESC returnRate, tie-break ASC volatility
+    static int partition(Asset[] arr, int low, int high, int pivotIdx) {
+        swap(arr, pivotIdx, high);
+        Asset pivot = arr[high];
+        int i = low - 1;
+
+        for (int j = low; j < high; j++) {
+            if (compareDescRetAscVol(arr[j], pivot) < 0) {
+                i++;
+                swap(arr, i, j);
+            }
+        }
+        swap(arr, i + 1, high);
+        return i + 1;
+    }
+
+    // DESC returnRate; tie → ASC volatility
+    static int compareDescRetAscVol(Asset a, Asset b) {
+        if (Double.compare(b.returnRate, a.returnRate) != 0)
+            return Double.compare(b.returnRate, a.returnRate);
+        return Double.compare(a.volatility, b.volatility);
+    }
+
+    // ── Pivot strategies ─────────────────────────────────────────────────────
+    static int randomPivot(int low, int high) {
+        return low + (int)(Math.random() * (high - low + 1));
+    }
+
+    static int medianOfThreePivot(Asset[] arr, int low, int high) {
+        int mid = (low + high) / 2;
+        // sort low/mid/high by returnRate DESC to find median
+        if (arr[low].returnRate < arr[mid].returnRate)  swap(arr, low, mid);
+        if (arr[low].returnRate < arr[high].returnRate) swap(arr, low, high);
+        if (arr[mid].returnRate < arr[high].returnRate) swap(arr, mid, high);
+        return mid; // median now at mid
+    }
+
+    // ── Insertion Sort for small partitions (hybrid helper) ──────────────────
+    static void insertionSortRange(Asset[] arr, int low, int high) {
+        for (int i = low + 1; i <= high; i++) {
+            Asset key = arr[i];
+            int j = i - 1;
+            while (j >= low && compareDescRetAscVol(arr[j], key) > 0) {
+                arr[j + 1] = arr[j];
+                j--;
+            }
+            arr[j + 1] = key;
+        }
+    }
+
+    static void swap(Asset[] arr, int a, int b) {
+        Asset t = arr[a]; arr[a] = arr[b]; arr[b] = t;
+    }
+
+    static void printArray(Asset[] arr) {
+        System.out.println(Arrays.toString(arr));
+    }
+
+    // ── Main ─────────────────────────────────────────────────────────────────
+    public static void main(String[] args) {
+
+        Asset[] assets = {
+            new Asset("AAPL", 12.0, 18.5),
+            new Asset("TSLA",  8.0, 40.2),
+            new Asset("GOOG", 15.0, 22.1),
+            new Asset("MSFT", 12.0, 15.3),  // same returnRate as AAPL (stability test)
+            new Asset("AMZN", 20.0, 35.0),
+            new Asset("NVDA", 35.0, 55.0),
+            new Asset("META", 18.0, 28.0)
+        };
+
+        // ── Merge Sort (ASC returnRate, stable) ──
+        Asset[] mergeArr = Arrays.copyOf(assets, assets.length);
+        System.out.println("=== Merge Sort (returnRate ASC, stable) ===");
+        mergeSort(mergeArr, 0, mergeArr.length - 1);
+        printArray(mergeArr);
+        System.out.println("AAPL before MSFT (stability): "
+            + (indexof(mergeArr, "AAPL") < indexof(mergeArr, "MSFT")));
+
+        // ── Quick Sort — median-of-3 pivot ──
+        Asset[] quickM3 = Arrays.copyOf(assets, assets.length);
+        System.out.println("\n=== Quick Sort (returnRate DESC + vol ASC) — median-of-3 ===");
+        quickSort(quickM3, 0, quickM3.length - 1, "median3");
+        printArray(quickM3);
+
+        // ── Quick Sort — random pivot ──
+        Asset[] quickRand = Arrays.copyOf(assets, assets.length);
+        System.out.println("\n=== Quick Sort (returnRate DESC + vol ASC) — random pivot ===");
+        quickSort(quickRand, 0, quickRand.length - 1, "random");
+        printArray(quickRand);
+
+        // ── Pivot strategy comparison ──
+        System.out.println("\n=== Pivot Strategy Comparison ===");
+        System.out.println("Both produce same order: "
+            + Arrays.equals(
+                Arrays.stream(quickM3).mapToInt(a -> (int)(a.returnRate*10)).toArray(),
+                Arrays.stream(quickRand).mapToInt(a -> (int)(a.returnRate*10)).toArray()
+            ));
+    }
+
+    static int indexof(Asset[] arr, String ticker) {
+        for (int i = 0; i < arr.length; i++)
+            if (arr[i].ticker.equals(ticker)) return i;
+        return -1;
+    }
+}
